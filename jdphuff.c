@@ -632,23 +632,6 @@ undoit:
 }
 
 /*
- * Save the current Huffman deocde position and the DC coefficients
- * for each component into bitstream_offset and dc_info[], respectively.
- */
-METHODDEF(void)
-get_huffman_decoder_configuration(j_decompress_ptr cinfo,
-        huffman_offset_data *offset)
-{
-  int i;
-  phuff_entropy_ptr entropy = (phuff_entropy_ptr) cinfo->entropy;
-  jpeg_get_huffman_decoder_configuration_progressive(cinfo, offset);
-  offset->EOBRUN = entropy->saved.EOBRUN;
-  for (i = 0; i < cinfo->comps_in_scan; i++)
-    offset->prev_dc[i] = entropy->saved.last_dc_val[i];
-}
-
-
-/*
  * Save the current Huffman decoder position and the bit buffer
  * into bitstream_offset and get_buffer, respectively.
  */
@@ -678,6 +661,48 @@ jpeg_get_huffman_decoder_configuration_progressive(j_decompress_ptr cinfo,
 
 
 /*
+ * Save the current Huffman deocde position and the DC coefficients
+ * for each component into bitstream_offset and dc_info[], respectively.
+ */
+METHODDEF(void)
+get_huffman_decoder_configuration(j_decompress_ptr cinfo,
+        huffman_offset_data *offset)
+{
+  int i;
+  phuff_entropy_ptr entropy = (phuff_entropy_ptr) cinfo->entropy;
+  jpeg_get_huffman_decoder_configuration_progressive(cinfo, offset);
+  offset->EOBRUN = entropy->saved.EOBRUN;
+  for (i = 0; i < cinfo->comps_in_scan; i++)
+    offset->prev_dc[i] = entropy->saved.last_dc_val[i];
+}
+
+/*
+ * Configure the Huffman decoder reader position and bit buffer.
+ */
+GLOBAL(void)
+jpeg_configure_huffman_decoder_progressive(j_decompress_ptr cinfo,
+	huffman_offset_data offset)
+{
+	phuff_entropy_ptr entropy = (phuff_entropy_ptr)cinfo->entropy;
+
+	// Restore restarts_to_go and next_restart_num
+	cinfo->unread_marker = 0;
+	entropy->restarts_to_go = offset.restarts_to_go;
+	cinfo->marker->next_restart_num = offset.next_restart_num;
+
+	unsigned int bitstream_offset = offset.bitstream_offset;
+	int blkn, i;
+
+	unsigned int byte_offset = bitstream_offset >> LOG_TWO_BIT_BUF_SIZE;
+	unsigned int bit_in_bit_buffer =
+		bitstream_offset & ((1 << LOG_TWO_BIT_BUF_SIZE) - 1);
+
+	jset_input_stream_position_bit(cinfo, byte_offset,
+		bit_in_bit_buffer, offset.get_buffer);
+}
+
+
+/*
  * Configure the Huffman decoder to decode the image
  * starting from (iMCU_row_offset, iMCU_col_offset).
  */
@@ -692,30 +717,6 @@ configure_huffman_decoder(j_decompress_ptr cinfo, huffman_offset_data offset)
     entropy->saved.last_dc_val[i] = offset.prev_dc[i];
 }
 
-/*
- * Configure the Huffman decoder reader position and bit buffer.
- */
-GLOBAL(void)
-jpeg_configure_huffman_decoder_progressive(j_decompress_ptr cinfo,
-        huffman_offset_data offset)
-{
-	phuff_entropy_ptr entropy = (phuff_entropy_ptr) cinfo->entropy;
-
-  // Restore restarts_to_go and next_restart_num
-  cinfo->unread_marker = 0;
-  entropy->restarts_to_go = offset.restarts_to_go;
-  cinfo->marker->next_restart_num = offset.next_restart_num;
-
-  unsigned int bitstream_offset = offset.bitstream_offset;
-  int blkn, i;
-
-  unsigned int byte_offset = bitstream_offset >> LOG_TWO_BIT_BUF_SIZE;
-  unsigned int bit_in_bit_buffer =
-      bitstream_offset & ((1 << LOG_TWO_BIT_BUF_SIZE) - 1);
-
-  jset_input_stream_position_bit(cinfo, byte_offset,
-          bit_in_bit_buffer, offset.get_buffer);
-}
 
 GLOBAL(void)
 jpeg_configure_huffman_index_scan(j_decompress_ptr cinfo,
